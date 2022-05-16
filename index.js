@@ -89,7 +89,7 @@ async function run() {
      * app.delete('/booking/:id) //
     */
 
-        app.post('/booking', verifyjwt, async (req, res) => {
+        app.get('/booking', async (req, res) => {
             const patient = req.query.patient;
             const decoddedEmail = req.decoded.email;
             if (patient === decoddedEmail) {
