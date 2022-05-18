@@ -1,10 +1,12 @@
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const express = require('express')
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const app = express()
 const port = process.env.PORT || 5000;
 require('dotenv').config();
+const stripe = require("stripe")(process.env.STRIPE_KEY);
+
 
 // middleware
 app.use(cors());
@@ -36,18 +38,31 @@ async function run() {
         const serviceCollection = client.db("doctors-portal").collection("service");
         const bookingCollection = client.db("doctors-portal").collection("booking");
         const usersCollection = client.db("doctors-portal").collection("users");
+        const doctorCollection = client.db("doctors-portal").collection("doctors");
+        const paymentsCollection = client.db("doctors-portal").collection("paymants");
+
+        const verifyAdmin = async (req, res, next) => {
+            const requester = req.decoded.email;
+            const requesterAccount = await usersCollection.findOne({ email: requester });
+            if (requesterAccount.role === 'admin') {
+                next();
+            }
+            else {
+                res.status(403).send({ message: 'forbidden' });
+            }
+        }
 
         app.get('/users', verifyjwt, async (req, res) => {
             const users = await usersCollection.find().toArray();
             res.send(users);
         })
 
-        app.get('/admin/:email', async(req, res) =>{
+        app.get('/admin/:email', async (req, res) => {
             const email = req.params.email;
-            const user = await usersCollection.findOne({email: email});
+            const user = await usersCollection.findOne({ email: email });
             const isAdmin = user.role === 'admin';
-            res.send({admin: isAdmin})
-          })
+            res.send({ admin: isAdmin })
+        })
 
         app.put('/user/:email', async (req, res) => {
             const email = req.params.email;
@@ -62,25 +77,17 @@ async function run() {
             res.send({ result, token });
         })
 
-        app.put('/user/admin/:email', verifyjwt, async (req, res) => {
+        app.put('/user/admin/:email', verifyjwt, verifyAdmin, async (req, res) => {
             const email = req.params.email;
-            const requester = req.decoded.email;
-            const requesterAccount = await usersCollection.findOne({ email: requester });
-            if (requesterAccount.role === 'admin') {
-                const filter = { email: email };
-                const updateDoc = {
-                    $set: { role: 'admin' },
-                };
-                const result = await usersCollection.updateOne(filter, updateDoc);
-                res.send(result);
-            }
-            else {
-                res.status(403).send({ message: 'forbidden' });
-            }
-
+            const filter = { email: email };
+            const updateDoc = {
+                $set: { role: 'admin' },
+            };
+            const result = await usersCollection.updateOne(filter, updateDoc);
+            res.send(result);
         })
 
-        /**
+        /**https://forms.gle/dfo5M8fCq3UYHroR9
      * API Naming Convention
      * app.get('/booking') // get all bookings in this collection. or get more than one or by filter
      * app.get('/booking/:id') // get a specific booking 
@@ -100,6 +107,28 @@ async function run() {
             else {
                 return res.status(403).send({ message: 'Forbidden access' });
             }
+        })
+
+        app.get('/booking/:id', verifyjwt, async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) };
+            const booking = await bookingCollection.findOne(query);
+            res.send(booking);
+        })
+
+        app.patch('/booking/:id',verifyjwt,async(req,res)=>{
+            const id = req.params.id;
+            const payment = req.body;
+            const filter = {_id: ObjectId(id)};
+            const updateDoc = {
+                $set:{
+                    paid: true,
+                    trangectionId: payment.trangectionId 
+                }
+            }
+            const updateBooking = await bookingCollection.updateOne(filter,updateDoc);
+            const result =await paymentsCollection.insertOne(payment);
+            res.send(updateBooking);
         })
 
         app.post('/booking', async (req, res) => {
@@ -139,11 +168,41 @@ async function run() {
             res.send(services);
         })
 
+        app.post('/create-payment-intent',verifyjwt, async(req, res) =>{
+            const service = req.body;
+            const price = service.price;
+            const amount = price*100;
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency : 'usd',
+                payment_method_types: ['card']
+            });
+            res.send({clientSecret: paymentIntent.client_secret})
+        })
+
         app.get('/service', async (req, res) => {
             const query = {};
-            const cursor = serviceCollection.find(query);
+            const cursor = serviceCollection.find(query).project({ name: 1 });
             const service = await cursor.toArray();
             res.send(service);
+        })
+
+        app.post('/doctor', verifyjwt, verifyAdmin, async (req, res) => {
+            const doctor = req.body;
+            const result = await doctorCollection.insertOne(doctor);
+            res.send(result);
+        })
+
+        app.delete('/doctor/:email', verifyjwt, verifyAdmin, async (req, res) => {
+            const email = req.params.email;
+            const filter = { email: email }
+            const result = await doctorCollection.deleteOne(filter);
+            res.send(result);
+        })
+
+        app.get('/doctor', verifyjwt, verifyAdmin, async (req, res) => {
+            const doctors = await doctorCollection.find().toArray();
+            res.send(doctors);
         })
 
     }
