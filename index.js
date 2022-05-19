@@ -123,7 +123,7 @@ async function run() {
             const updateDoc = {
                 $set:{
                     paid: true,
-                    trangectionId: payment.trangectionId 
+                    trangectionId: payment.trnangectionId 
                 }
             }
             const updateBooking = await bookingCollection.updateOne(filter,updateDoc);
