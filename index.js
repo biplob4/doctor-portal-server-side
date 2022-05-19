@@ -116,18 +116,18 @@ async function run() {
             res.send(booking);
         })
 
-        app.patch('/booking/:id',verifyjwt,async(req,res)=>{
+        app.patch('/booking/:id', verifyjwt, async (req, res) => {
             const id = req.params.id;
             const payment = req.body;
-            const filter = {_id: ObjectId(id)};
+            const filter = { _id: ObjectId(id) };
             const updateDoc = {
-                $set:{
+                $set: {
                     paid: true,
-                    trangectionId: payment.trnangectionId 
+                    trnangectionId: payment.trnangectionId
                 }
             }
-            const updateBooking = await bookingCollection.updateOne(filter,updateDoc);
-            const result =await paymentsCollection.insertOne(payment);
+            const updateBooking = await bookingCollection.updateOne(filter, updateDoc);
+            const result = await paymentsCollection.insertOne(payment);
             res.send(updateBooking);
         })
 
@@ -168,16 +168,16 @@ async function run() {
             res.send(services);
         })
 
-        app.post('/create-payment-intent',verifyjwt, async(req, res) =>{
+        app.post('/create-payment-intent', verifyjwt, async (req, res) => {
             const service = req.body;
             const price = service.price;
-            const amount = price*100;
+            const amount = price * 100;
             const paymentIntent = await stripe.paymentIntents.create({
                 amount: amount,
-                currency : 'usd',
+                currency: 'usd',
                 payment_method_types: ['card']
             });
-            res.send({clientSecret: paymentIntent.client_secret})
+            res.send({ clientSecret: paymentIntent.client_secret })
         })
 
         app.get('/service', async (req, res) => {
